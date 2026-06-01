@@ -10,7 +10,7 @@
 get_eden_data <- function(eden_path = file.path("~/water")) {
 
 metadata <- get_metadata()
-last_download <- get_last_download(eden_path) %>% dplyr::select(-X)
+last_download <- get_last_download(eden_path) #%>% dplyr::select(-X)
 
 if(identical(metadata,last_download)) {
   return(NULL)
