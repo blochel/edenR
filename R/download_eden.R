@@ -100,7 +100,7 @@ get_files_to_update <- function(eden_path, metadata, force_update = FALSE) {
         is.na(last_modified.last)
     )
 
-  unlink(file.path(eden_path, new$dataset))
+  # unlink(file.path(eden_path, new$dataset)) test remove this, as it should overwrite automatically 
   unchanged_files <- list.files(eden_path, pattern = "*_depth.nc")
   metadata |>
     dplyr::filter(!(dataset %in% unchanged_files))
@@ -118,7 +118,8 @@ get_files_to_update <- function(eden_path, metadata, force_update = FALSE) {
 update_last_download <- function(eden_path, metadata) {
   current_files <- list.files(eden_path, pattern = "*_depth.nc")
   current_file_metadata <- dplyr::filter(metadata, dataset %in% current_files)
-  write.csv(current_file_metadata, file.path(eden_path, "last_download.csv"))
+  write.csv(current_file_metadata, file.path(eden_path, "last_download.csv"), 
+            row.names = FALSE)
 }
 
 #' @name download_eden_depths
@@ -156,14 +157,20 @@ download_eden_depths <- function(eden_path = file.path("~/water"),
         {
           download.file(
             data_urls$urls[i],
-            file.path(eden_path, data_urls$file_names[i])
+            file.path(eden_path, data_urls$file_names[i]), 
+            mode = "wb",        # binary mode for cross-platform compatibility 
+            method = "libcurl"  # added reliability for large files
           )
           downloaded[[i]] <- file.path(eden_path, data_urls$file_names[i])
           success <- TRUE
         },
         error = function(e) {
           attempts <- attempts + 1
-          file.remove(file.path(eden_path, data_urls$file_names[i]))
+          #remove file if it exists and download failed
+          dest_file <- file.path(eden_path, data_urls$file_names[i])
+          if (file.exists(dest_file)) {
+            file.remove(dest_file)
+          }
           if (attempts >= 3) {
             downloaded[[i]] <- NA
             message(glue::glue("Failed to download {data_urls$urls[i]}"))
