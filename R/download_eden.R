@@ -11,7 +11,7 @@ get_metadata <- function() {
     rvest::read_html() |>
     rvest::html_table()
   metadata <- as.data.frame(metadata[[1]]) |>
-    dplyr::filter(Dataset != "depths") |> # Drop directory name from first row
+    dplyr::filter(Dataset != "depths") |>
     dplyr::rename(
       dataset = Dataset, size = Size,
       last_modified = `Last Modified`
@@ -58,4 +58,120 @@ get_last_download <- function(eden_path = file.path("~/water"),
                               metadata = get_metadata(),
                               force_update = FALSE) {
   if ("last_download.csv" %in% list.files(eden_path) & !force_update) {
+    last_download <- read.csv(file.path(eden_path, "last_download.csv")) |>
+      dplyr::mutate(last_modified = as.POSIXct(last_modified))
+  } else {
+    last_download <- data.frame(
+      dataset = metadata$dataset, size = "0 Mbytes",
+      last_modified = as.POSIXct("1900-01-01 00:00:01",
+                                 format = "%Y-%m-%d %H:%M:%S"
+      )
+    )
   }
+  return(last_download)
+}
+
+#' @name get_files_to_update
+#'
+#' @title Determine list of new EDEN files to download
+#'
+#' @param eden_path path where the EDEN data should be stored
+#' @param metadata EDEN file metadata
+#' @param force_update if TRUE update all data files even if checks indicate
+#'   that remote files are unchanged since the current local copies were
+#'   created
+#'
+#' @export
+#'
+get_files_to_update <- function(eden_path, metadata, force_update = FALSE) {
+  last_download <- get_last_download(
+    eden_path,
+    metadata,
+    force_update = force_update
+  )
+  new <- metadata |>
+    dplyr::left_join(last_download, by = "dataset", suffix = c("", ".last")) |>
+    dplyr::filter(
+      last_modified > last_modified.last |
+        size != size.last |
+        is.na(last_modified.last)
+    )
+  unchanged_files <- list.files(eden_path, pattern = "*_depth.nc")
+  metadata |>
+    dplyr::filter(!(dataset %in% unchanged_files))
+}
+
+#' @name update_last_download
+#'
+#' @title Write new metadata file for files already downloaded
+#'
+#' @param eden_path path where the EDEN data should be stored
+#' @param metadata EDEN file metadata
+#'
+#' @export
+#'
+update_last_download <- function(eden_path, metadata) {
+  current_files <- list.files(eden_path, pattern = "*_depth.nc")
+  current_file_metadata <- dplyr::filter(metadata, dataset %in% current_files)
+  write.csv(current_file_metadata, file.path(eden_path, "last_download.csv"), row.names = FALSE)
+}
+
+#' @name download_eden_depths
+#'
+#' @title Download the EDEN depths data
+#'
+#' @param eden_path path where the EDEN data should be stored
+#' @param force_update if TRUE update all data files even if checks indicate
+#'   that remote files are unchanged since the current local copies were
+#'   created
+#'
+#' @return char vector of downloaded/updated files
+#'
+#' @export
+#'
+download_eden_depths <- function(eden_path = file.path("~/water"),
+                                 force_update = FALSE) {
+  if (!dir.exists(eden_path)) {
+    dir.create(eden_path, recursive = TRUE)
+  }
+  metadata <- get_metadata()
+  to_update <- get_files_to_update(eden_path, metadata,
+                                   force_update = force_update
+  )
+  data_urls <- get_data_urls(to_update$dataset)
+  options(timeout = 500)
+  downloaded <- vector("list", length(data_urls$urls))
+  for (i in seq_along(data_urls$urls)) {
+    success <- FALSE
+    attempts <- 0
+    while (!success && attempts < 3) {
+      tryCatch(
+        {
+          download.file(
+            data_urls$urls[i],
+            file.path(eden_path, data_urls$file_names[i]),
+            mode = "wb",
+            method = "libcurl"
+          )
+          downloaded[[i]] <- file.path(eden_path, data_urls$file_names[i])
+          success <- TRUE
+        },
+        error = function(e) {
+          attempts <- attempts + 1
+          dest_file <- file.path(eden_path, data_urls$file_names[i])
+          if (file.exists(dest_file)) {
+            file.remove(dest_file)
+          }
+          if (attempts >= 3) {
+            downloaded[[i]] <- NA
+            message(glue::glue("Failed to download {data_urls$urls[i]}"))
+          } else {
+            message(glue::glue("Retrying download of {data_urls$urls[i]}"))
+          }
+        }
+      )
+    }
+  }
+  update_last_download(eden_path, metadata)
+  return(file.path(eden_path, data_urls$file_names))
+}
