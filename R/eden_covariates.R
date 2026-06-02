@@ -165,6 +165,20 @@ available_years <- function(eden_path = file.path("~/water"), new = FALSE) {
 #'
 #' @export
 #'
+# Read time values from a NetCDF file and returns them as POSIXct.
+
+get_nc_times <- function(nc_file) {
+  nc <- ncdf4::nc_open(nc_file)
+  time_vals <- ncdf4::ncvar_get(nc, "time")
+  time_units <- ncdf4::ncatt_get(nc, "time", "units")$value
+  ncdf4::nc_close(nc)
+  epoch_str <- sub("days since ", "", time_units)
+  epoch_str <- sub("Z$", "", epoch_str)  # Remove Z
+  epoch <- as.POSIXct(epoch_str, format = "%Y-%m-%dT%H:%M:%S", tz = "UTC")
+  epoch + as.difftime(time_vals, units = "days")
+}
+
+
 get_eden_covariates <- function(level = "subregions",
                                 eden_path = file.path("~/water"),
                                 years = available_years(eden_path),
@@ -185,7 +199,9 @@ get_eden_covariates <- function(level = "subregions",
     nc_files <- c(list.files(eden_path, pattern3, full.names = TRUE),
                   list.files(eden_path, pattern2, full.names = TRUE),
                   list.files(eden_path, pattern, full.names = TRUE))
+    time_values <- do.call(c, lapply(nc_files, get_nc_times))
     year_data <- stars::read_stars(nc_files, along = "time") %>%
+      stars::st_set_dimensions("time", values = time_values) %>%
       setNames(., "depth") %>%
       dplyr::mutate(depth = dplyr::case_when(depth < units::set_units(0, cm) ~ units::set_units(0, cm),
                                              depth >= units::set_units(0, cm) ~ depth,
