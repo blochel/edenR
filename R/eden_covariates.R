@@ -229,7 +229,7 @@ get_nc_times <- function(nc_file) {
   epoch_str <- sub("Z$", "", epoch_str)
   epoch_str <- sub(" \\+0000$", "", epoch_str)
   epoch_str <- sub("\\+00:00$", "", epoch_str)  # Also handle +00:00
-  
+#   
   # Try standard format first (with T separator)
   epoch <- as.POSIXct(epoch_str, format = "%Y-%m-%dT%H:%M:%S", tz = "UTC")
   
