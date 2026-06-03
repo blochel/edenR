@@ -222,10 +222,27 @@ get_nc_times <- function(nc_file) {
   time_vals <- ncdf4::ncvar_get(nc, "time")
   time_units <- ncdf4::ncatt_get(nc, "time", "units")$value
   ncdf4::nc_close(nc)
+  
+  # Extract epoch from CF-compliant time units
+  # Known formats in EDEN data: "days since YYYY-MM-DDTHH:MM:SSZ"
   epoch_str <- sub("days since ", "", time_units)
   epoch_str <- sub("Z$", "", epoch_str)
   epoch_str <- sub(" \\+0000$", "", epoch_str)
+  epoch_str <- sub("\\+00:00$", "", epoch_str)  # Also handle +00:00
+  
+  # Try standard format first (with T separator)
   epoch <- as.POSIXct(epoch_str, format = "%Y-%m-%dT%H:%M:%S", tz = "UTC")
+  
+  # Fallback: try space separator if T-format failed
+  if (is.na(epoch)) {
+    epoch <- as.POSIXct(epoch_str, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  }
+  
+  # Error check
+  if (is.na(epoch)) {
+    stop(sprintf("Could not parse time units from NetCDF: '%s'", time_units))
+  }
+  
   epoch + as.difftime(time_vals, units = "days")
 }
 
