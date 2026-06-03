@@ -141,37 +141,57 @@ download_eden_depths <- function(eden_path = file.path("~/water"),
   data_urls <- get_data_urls(to_update$dataset)
   options(timeout = 500)
   downloaded <- vector("list", length(data_urls$urls))
+  
   for (i in seq_along(data_urls$urls)) {
     success <- FALSE
     attempts <- 0
+    
     while (!success && attempts < 3) {
+      attempts <- attempts + 1
       tryCatch(
         {
-          download.file(
+          status <- download.file(
             data_urls$urls[i],
             file.path(eden_path, data_urls$file_names[i]),
             mode = "wb",
             method = "libcurl"
           )
-          downloaded[[i]] <- file.path(eden_path, data_urls$file_names[i])
-          success <- TRUE
+          
+          # Check return status: 0 = success, non-zero = failure
+          if (status == 0) {
+            downloaded[[i]] <- file.path(eden_path, data_urls$file_names[i])
+            success <- TRUE
+          } else {
+            # Non-zero status means download failed
+            dest_file <- file.path(eden_path, data_urls$file_names[i])
+            if (file.exists(dest_file)) {
+              file.remove(dest_file)
+            }
+            if (attempts >= 3) {
+              downloaded[[i]] <- NA
+              message(glue::glue("Failed to download {data_urls$urls[i]} (status: {status})"))
+            }
+          }
         },
         error = function(e) {
-          attempts <- attempts + 1
           dest_file <- file.path(eden_path, data_urls$file_names[i])
           if (file.exists(dest_file)) {
             file.remove(dest_file)
           }
           if (attempts >= 3) {
             downloaded[[i]] <- NA
-            message(glue::glue("Failed to download {data_urls$urls[i]}"))
-          } else {
-            message(glue::glue("Retrying download of {data_urls$urls[i]}"))
+            message(glue::glue("Failed to download {data_urls$urls[i]}: {e$message}"))
           }
         }
       )
     }
   }
+  
   update_last_download(eden_path, metadata)
-  return(file.path(eden_path, data_urls$file_names))
+  
+  # Return successfully downloaded files (filter out NAs)
+  downloaded_files <- Filter(Negate(is.na), downloaded)
+  return(unlist(downloaded_files))
 }
+
+
