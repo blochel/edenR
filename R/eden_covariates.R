@@ -244,7 +244,7 @@ get_nc_times <- function(nc_file) {
   }
   
   epoch + as.difftime(time_vals, units = "days")
-}
+# }
 
 #' @name get_eden_covariates
 #'
