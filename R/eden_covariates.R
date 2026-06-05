@@ -244,7 +244,7 @@ get_nc_times <- function(nc_file) {
   }
   
   epoch + as.difftime(time_vals, units = "days")
-# }
+ }
 
 #' @name get_eden_covariates
 #'
@@ -422,6 +422,6 @@ reshape_star <- function(data, variable = "depth", year, boundaries) {
     dplyr::rename(!!variable := value)
   return(new_data)
 }
-}
+
 
 
