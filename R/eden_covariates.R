@@ -421,4 +421,7 @@ reshape_star <- function(data, variable = "depth", year, boundaries) {
     dplyr::select(date, region, value) %>%
     dplyr::rename(!!variable := value)
   return(new_data)
-  }
+}
+}
+
+
