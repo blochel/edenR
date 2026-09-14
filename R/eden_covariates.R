@@ -1,4 +1,6 @@
 # Calculate standard water depth covariates from EDEN data following WADEM model
+
+
 #' @name default_colony_buffers
 #'
 #' @title Return default colony buffers in m for each species
@@ -28,9 +30,9 @@ default_colony_buffers <- function() {
 #' @export
 #'
 get_boundaries <- function(
-    path = "https://raw.githubusercontent.com/weecology/EvergladesWadingBird/refs/heads/main/SiteandMethods/",
-    level = "subregions",
-    colony_buffers = default_colony_buffers()
+  path = "https://raw.githubusercontent.com/weecology/EvergladesWadingBird/refs/heads/main/SiteandMethods/",
+  level = "subregions",
+  colony_buffers = default_colony_buffers()
 ) {
   level <- tolower(level)
   if (level == "colonies") {
@@ -63,9 +65,9 @@ get_boundaries <- function(
 #' @export
 #'
 load_boundaries <- function(
-    path = "https://raw.githubusercontent.com/weecology/EvergladesWadingBird/refs/heads/main/SiteandMethods/",
-    level = "subregions",
-    colony_buffers = default_colony_buffers()
+  path = "https://raw.githubusercontent.com/weecology/EvergladesWadingBird/refs/heads/main/SiteandMethods/",
+  level = "subregions",
+  colony_buffers = default_colony_buffers()
 ) {
   .Deprecated("get_boundaries")
   get_boundaries(path, level, colony_buffers)
@@ -145,6 +147,7 @@ calc_reversals <- function(depth_data) {
   return(reversals)
 }
 
+
 #' @name extract_region_means
 #'
 #' @title Calculate region means from raster data
@@ -191,12 +194,14 @@ extract_region_means <- function(raster, regions) {
 #'
 #' @export
 #'
+
 available_years <- function(eden_path = file.path("~/water"), new = FALSE) {
   eden_data_files <- list.files(file.path(eden_path), pattern = "_depth.nc")
   years <- eden_data_files %>%
     stringr::str_split("_", simplify = TRUE) %>%
     .[, 1] %>%
     unique()
+
   if (new) {
     # Find which years need to be updated since last download
     metadata <- get_metadata()
@@ -210,6 +215,7 @@ available_years <- function(eden_path = file.path("~/water"), new = FALSE) {
       unique() %>%
       .[. %in% c(new$year, new$year + 1, new$year + 2)]
   }
+
   return(years)
 }
 
@@ -222,29 +228,11 @@ get_nc_times <- function(nc_file) {
   time_vals <- ncdf4::ncvar_get(nc, "time")
   time_units <- ncdf4::ncatt_get(nc, "time", "units")$value
   ncdf4::nc_close(nc)
-  
-  # Extract epoch from CF-compliant time units
-  # Known formats in EDEN data: "days since YYYY-MM-DDTHH:MM:SSZ"
-  epoch_str <- sub("days since ", "", time_units)
-  epoch_str <- sub("Z$", "", epoch_str)
-  epoch_str <- sub(" \\+0000$", "", epoch_str)
-  epoch_str <- sub("\\+00:00$", "", epoch_str)  # Also handle +00:00
-#   
-  # Try standard format first (with T separator)
-  epoch <- as.POSIXct(epoch_str, format = "%Y-%m-%dT%H:%M:%S", tz = "UTC")
-  
-  # Fallback: try space separator if T-format failed
-  if (is.na(epoch)) {
-    epoch <- as.POSIXct(epoch_str, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
-  }
-  
-  # Error check
-  if (is.na(epoch)) {
-    stop(sprintf("Could not parse time units from NetCDF: '%s'", time_units))
-  }
-  
+  epoch <- as.POSIXct(sub("days since ", "", time_units),
+    format = "%Y-%m-%dT%H:%M:%S %z", tz = "UTC"
+  )
   epoch + as.difftime(time_vals, units = "days")
- }
+}
 
 #' @name get_eden_covariates
 #'
@@ -266,16 +254,17 @@ get_nc_times <- function(nc_file) {
 #' @export
 #'
 get_eden_covariates <- function(
-    level = "subregions",
-    eden_path = file.path("~/water"),
-    years = available_years(eden_path),
-    boundaries_path = "https://raw.githubusercontent.com/weecology/EvergladesWadingBird/refs/heads/main/SiteandMethods/",
-    colony_buffers = default_colony_buffers()
+  level = "subregions",
+  eden_path = file.path("~/water"),
+  years = available_years(eden_path),
+  boundaries_path = "https://raw.githubusercontent.com/weecology/EvergladesWadingBird/refs/heads/main/SiteandMethods/",
+  colony_buffers = default_colony_buffers()
 ) {
   eden_data_files <- list.files(file.path(eden_path), pattern = "_depth.nc")
   boundaries <- get_boundaries(boundaries_path, level, colony_buffers)
   examp_eden_file <- stars::read_stars(file.path(eden_path, eden_data_files[1]))
   boundaries_utm <- sf::st_transform(boundaries, sf::st_crs(examp_eden_file))
+
   covariates <- c()
   for (year in years) {
     print(paste("Processing ", year, "...", sep = ""))
@@ -300,10 +289,12 @@ get_eden_covariates <- function(
     breed_end <- as.POSIXct(paste0(year, "-06-30"))
     breed_season_data <- year_data %>%
       dplyr::filter(time >= breed_start, time <= breed_end)
+
     dry_start <- as.POSIXct(paste0(as.numeric(year) - 2, "-03-31"))
     dry_end <- as.POSIXct(paste0(year, "-06-30"))
     dry_season_data <- year_data %>%
       dplyr::filter(time >= dry_start, time <= dry_end)
+
     # Do a pre-breed/post-breed split to allow pre-breeding recession calculations
     # following Peterson 2017. Peterson does this on a per species basis. To start
     # just pick the mid-point for the different species to split on
@@ -312,12 +303,14 @@ get_eden_covariates <- function(
       dplyr::filter(time >= breed_start, time <= pre_breed_end)
     post_breed_season_data <- year_data %>%
       dplyr::filter(time >= pre_breed_end, time <= breed_end)
+
     # Calculate depth_breed from everwader
     breed_season_depth <- breed_season_data %>%
       stars::st_apply(c(1, 2), mean) %>%
       setNames(., "breed_season_depth")
     init_depth <- breed_season_data[, , , 1] %>%
       setNames(., "init_depth")
+
     # Calculate recession from everwader
     recession <- calc_recession(breed_season_data) %>%
       setNames(., "recession")
@@ -325,12 +318,15 @@ get_eden_covariates <- function(
       setNames(., "pre_recession")
     post_recession <- calc_recession(post_breed_season_data) %>%
       setNames(., "post_recession")
+
     # Calculate dryindex from everwader (USGS code calculates this from t-3 3/31 to t 6/30)
     dry_days <- calc_dry_days(dry_season_data) %>%
       setNames(., "dry_days")
+
     # Calculate reversals following Peterson 2017
     reversals <- calc_reversals(breed_season_data) %>%
       setNames(., "reversals")
+
     predictors <- list(
       init_depth, breed_season_depth, recession, pre_recession,
       post_recession, dry_days, reversals
@@ -368,6 +364,7 @@ get_eden_depths <- function(level = "subregions",
   boundaries <- get_boundaries(boundaries_path, level, colony_buffers)
   examp_eden_file <- stars::read_stars(file.path(eden_data_files[1]))
   boundaries_utm <- sf::st_transform(boundaries, sf::st_crs(examp_eden_file))
+
   new_data <- c()
   for (year in years) {
     print(paste("Processing ", year, "...", sep = ""))
@@ -382,21 +379,24 @@ get_eden_depths <- function(level = "subregions",
         depth >= units::set_units(0, cm) ~ depth,
         is.na(depth) ~ units::set_units(NA, cm)
       ))
+
     region_means <- terra::aggregate(year_data, boundaries_utm, mean, na.rm = TRUE)
     region_sd <- terra::aggregate(year_data, boundaries_utm, sd, na.rm = TRUE)
     region_max <- terra::aggregate(year_data, boundaries_utm, max, na.rm = TRUE)
     region_min <- terra::aggregate(year_data, boundaries_utm, min, na.rm = TRUE)
+
     new_year <- reshape_star(region_means, variable = "depth_mean", year = year, boundaries = boundaries_utm) %>%
       merge(reshape_star(region_sd, variable = "depth_sd", year = year, boundaries = boundaries_utm)) %>%
       merge(reshape_star(region_max, variable = "depth_max", year = year, boundaries = boundaries_utm)) %>%
       merge(reshape_star(region_min, variable = "depth_min", year = year, boundaries = boundaries_utm))
+
     new_data <- rbind(new_data, new_year)
   }
   return(new_data)
 }
 
 #' @name reshape_star
-
+#'
 #' @title Reshapes star object to dataframe
 #'
 #' @param data data to reshape
@@ -416,12 +416,9 @@ reshape_star <- function(data, variable = "depth", year, boundaries) {
   new_data <- new_region %>%
     dplyr::mutate(region = region_spdf$Name) %>%
     tidyr::pivot_longer(starts_with(as.character(year)),
-                        names_to = "date", values_to = "value"
+      names_to = "date", values_to = "value"
     ) %>%
     dplyr::select(date, region, value) %>%
     dplyr::rename(!!variable := value)
   return(new_data)
 }
-
-
-
